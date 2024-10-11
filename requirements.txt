@@ -1,0 +1,6 @@
+# Add your dependencies here
+boto3
+requests
+pylint 
+pytest 
+python-dotenv
