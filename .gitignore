@@ -1,0 +1,54 @@
+# Python specific files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment
+env/
+venv/
+ENV/
+.venv/
+
+# AWS credentials and config
+.aws/
+
+# Logs
+*.log
+*.out
+*.err
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Kafka related files
+logs/
+tmp/
+*.pid
+kafka-logs/
+zookeeper-logs/
+kafka-data/
+zookeeper-data/
+
+# Ignore S3 cache or local sync
+.s3/
+
+# Ignore package dependencies
+node_modules/
+
+
+# Others
+docs.txt
+EC2
+*.pem
