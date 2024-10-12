@@ -14,10 +14,12 @@ session = boto3.Session()
 s3 = session.client("s3")
 
 BUCKET_NAME: str = os.getenv("BUCKET_NAME")
-DOWNLOAD_PATH: str = os.getenv("DOWNLOAD_PATH") or ".././downloaded_files"
+DOWNLOAD_PATH: str = os.getenv("DOWNLOAD_PATH")
 
 
-def download_files(bucket_name: str, download_path: str) -> None:
+def download_files(
+    bucket_name: str, download_path: str = ".././downloaded_files"
+) -> None:
     """
     This method download files from provided destination
     """
