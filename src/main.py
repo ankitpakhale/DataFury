@@ -1,13 +1,23 @@
-# pylint: disable=import-error
-import bottle
+"""
+Starting point of the project
+"""
+
 import logging
-from bottle import route, run, request
 from typing import Callable, Any
+import bottle
+from bottle import route, run, request
 
 # FIXME: Add caching in all the endpoints
 
 # configure logging
 logging.basicConfig(level=logging.ERROR)
+
+
+def generate_response(status: bool, payload: dict, message: str) -> dict:
+    """
+    generate_response returns the response in specific order
+    """
+    return {"status": status, "payload": payload, "message": message}
 
 
 def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
@@ -23,25 +33,21 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
 
     def wrapper(*args, **kwargs) -> dict:
         try:
-            result: dict = {
-                "status": True,
-                "payload": func(*args, **kwargs),
-                "message": "Response generated successfully",
-            }
-            print("➡ 22 result:", result)
-            return result
+            return generate_response(
+                status=True,
+                payload=func(*args, **kwargs),
+                message="Response generated successfully",
+            )
         except (ValueError, TypeError, KeyError) as e:  # specific exceptions to catch
-            return {"status": False, "payload": None, "message": str(e)}
+            return generate_response(status=False, payload={}, message=str(e))
         except Exception as e:  # pylint: disable=broad-exception-caught
             # log unexpected exceptions
             logging.error(
                 "Unexpected error in %s: %s", func.__name__, e
             )  # lazy % formatting
-            return {
-                "status": False,
-                "payload": None,
-                "message": "An unexpected error occurred.",
-            }
+            return generate_response(
+                status=False, payload={}, message="An unexpected error occurred."
+            )
 
     return wrapper
 
@@ -52,7 +58,7 @@ def health_check():
     """
     health-check endpoint
     """
-    return "PONG"
+    return {"result": "PONG"}
 
 
 @route("/download-files", method="POST")
