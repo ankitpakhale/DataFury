@@ -34,10 +34,9 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
             return {"status": False, "payload": None, "message": str(e)}
         except Exception as e:  # pylint: disable=broad-exception-caught
             # log unexpected exceptions
-            logging.error(f"Unexpected error in {func.__name__}: {e}")
-            # logging.error(
-            #     "Unexpected error in %s: %s", func.__name__, e
-            # )  # lazy % formatting
+            logging.error(
+                "Unexpected error in %s: %s", func.__name__, e
+            )  # lazy % formatting
             return {
                 "status": False,
                 "payload": None,
