@@ -1,5 +1,5 @@
 import pytest
-from src.main import main
+from src.controller import main
 
 
 def test_main(capsys):

@@ -8,13 +8,21 @@ from utils import cache
 from utils import logger
 import bottle
 from bottle import route, run, request
+from constant import status
 
 
-def generate_response(status: bool, payload: dict, message: str) -> dict:
+def generate_response(
+    status: bool, payload: dict, message: str, status_code: str
+) -> dict:
     """
     generate_response returns the response in specific order
     """
-    return {"status": status, "payload": payload, "message": message}
+    return {
+        "status": status,
+        "payload": payload,
+        "message": message,
+        "status_code": status_code,
+    }
 
 
 def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
@@ -26,6 +34,7 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
         'status': True | False,
         'payload': result | None,
         'message': 'Response generated successfully' | error message
+        'status_code': 200 | 400 | 404 | 500 | etc.
     }
     """
 
@@ -50,17 +59,26 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
                 status=True,
                 payload=result,
                 message="Response generated successfully",
+                status_code=status.HTTP_200_OK,
             )
         except (ValueError, TypeError, KeyError) as e:  # specific exceptions to catch
             logger.error("Error occured: %s", {str(e)})
-            return generate_response(status=False, payload={}, message=str(e))
+            return generate_response(
+                status=False,
+                payload={},
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:  # pylint: disable=broad-exception-caught
             # log unexpected exceptions
             logger.error(
                 "Unexpected error in %s: %s", func.__name__, e
             )  # lazy % formatting
             return generate_response(
-                status=False, payload={}, message="An unexpected error occurred."
+                status=False,
+                payload={},
+                message="An unexpected error occurred.",
+                status_code=status.HTTP_400_BAD_REQUEST,
             )
 
     return wrapper
@@ -82,7 +100,6 @@ def download_files():
     download_files endpoint
     """
     url = request.forms.url.strip()
-    print("➡ url:", url)
     return url
 
 
