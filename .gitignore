@@ -53,3 +53,5 @@ docs.txt
 EC2
 *.pem
 downloaded_files
+mycache
+.db

@@ -6,11 +6,14 @@ import logging
 from typing import Callable, Any
 import bottle
 from bottle import route, run, request
+import diskcache as dc
 
-# FIXME: Add caching in all the endpoints
 
 # configure logging
 logging.basicConfig(level=logging.ERROR)
+
+# diskcache
+cache = dc.Cache("mycache")
 
 
 def generate_response(status: bool, payload: dict, message: str) -> dict:
@@ -22,7 +25,7 @@ def generate_response(status: bool, payload: dict, message: str) -> dict:
 
 def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
     """
-    safeguard is a decorator that provides result & error in specific order.
+    safeguard is a decorator that provides caching functionality. Along with result & error in specific order.
     It follows this order
     {
         'status': True | False,
@@ -33,9 +36,16 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
 
     def wrapper(*args, **kwargs) -> dict:
         try:
+            key: str = request.forms.url.strip()
+            cached_data: dict = cache.get(key)
+            if cached_data is None:
+                result = func(*args, **kwargs)
+                cache[key] = result
+            else:
+                result = cached_data
             return generate_response(
                 status=True,
-                payload=func(*args, **kwargs),
+                payload=result,
                 message="Response generated successfully",
             )
         except (ValueError, TypeError, KeyError) as e:  # specific exceptions to catch
@@ -68,6 +78,7 @@ def download_files():
     download_files endpoint
     """
     url = request.forms.url.strip()
+    print("➡ url:", url)
     return url
 
 
