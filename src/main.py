@@ -1,12 +1,13 @@
+# pylint: disable=pointless-string-statement
 """
 Starting point of the project
 """
 
 from typing import Callable, Any
+from utils import cache
+from utils import logger
 import bottle
 from bottle import route, run, request
-from config import cache
-from config import logger
 
 
 def generate_response(status: bool, payload: dict, message: str) -> dict:
@@ -18,19 +19,22 @@ def generate_response(status: bool, payload: dict, message: str) -> dict:
 
 def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
     """
-    safeguard is a decorator that provides caching functionality. Along with result & error in specific order.
-    It follows this order
+    safeguard is a decorator that adds caching functionality.
+    It returns a structured response containing the result and error
+    information in the following format:
     {
         'status': True | False,
         'payload': result | None,
-        'message': Response generated successfully | error msg
+        'message': 'Response generated successfully' | error message
     }
     """
 
     def wrapper(*args, **kwargs) -> dict:
         try:
             """
-            First it checks the data of requested key in caching, if it found the data then return the data, if not then request will get called and the response will get stored in cache for next time.
+            It first checks if the requested key's data is present in the cache.
+            If the data is found, it returns that data. If not, it makes the request,
+            retrieves the response, and stores it in the cache for future use.
             """
             key: str = request.forms.url.strip()
             cached_data: dict = cache.get(key)
@@ -41,6 +45,7 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
             else:
                 result = cached_data
                 logger.debug("Cached data found for %s key", {key})
+
             return generate_response(
                 status=True,
                 payload=result,
