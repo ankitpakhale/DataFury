@@ -1,56 +1,71 @@
 # pylint: disable=import-error
-"""
-This is the starting point of the application
-"""
+import bottle
+import logging
+from bottle import route, run, request
+from typing import Callable, Any
 
-import os
-from dotenv import load_dotenv
-import boto3
+# FIXME: Add caching in all the endpoints
 
-load_dotenv()
-
-BUCKET_NAME: str = os.getenv("BUCKET_NAME")
-DOWNLOAD_PATH: str = os.getenv("DOWNLOAD_PATH")
+# configure logging
+logging.basicConfig(level=logging.ERROR)
 
 
-class DownloadFiles:  # pylint: disable=too-few-public-methods
+def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
     """
-    DownloadFiles Class
+    safeguard is a decorator that provides result & error in specific order.
+    It follows this order
+    {
+        'status': True | False,
+        'payload': result | None,
+        'message': Response generated successfully | error msg
+    }
     """
 
-    def __init__(self) -> None:
-        """
-        Constructor method
-        """
-        __session = boto3.Session()
-        self.__s3 = __session.client("s3")
+    def wrapper(*args, **kwargs) -> dict:
+        try:
+            result: dict = {
+                "status": True,
+                "payload": func(*args, **kwargs),
+                "message": "Response generated successfully",
+            }
+            print("➡ 22 result:", result)
+            return result
+        except (ValueError, TypeError, KeyError) as e:  # specific exceptions to catch
+            return {"status": False, "payload": None, "message": str(e)}
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # log unexpected exceptions
+            logging.error(f"Unexpected error in {func.__name__}: {e}")
+            # logging.error(
+            #     "Unexpected error in %s: %s", func.__name__, e
+            # )  # lazy % formatting
+            return {
+                "status": False,
+                "payload": None,
+                "message": "An unexpected error occurred.",
+            }
 
-    def download_files(
-        self, bucket_name: str, download_path: str = ".././downloaded_files"
-    ) -> None:
-        """
-        This method download files from provided destination
-        """
-        bucket_name = bucket_name.strip()
+    return wrapper
 
-        if not os.path.exists(download_path):
-            os.makedirs(download_path)
 
-        response = self.__s3.list_objects_v2(Bucket=bucket_name)
+@route("/ping")
+@safeguard
+def health_check():
+    """
+    health-check endpoint
+    """
+    return "PONG"
 
-        if "Contents" in response:
-            for obj in response["Contents"]:
-                file_key = obj["Key"]
-                file_path = os.path.join(download_path, file_key)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                print(f"Downloading {file_key} to {file_path}")
-                self.__s3.download_file(bucket_name, file_key, file_path)
-        else:
-            print(f"No files found in bucket {bucket_name}.")
+
+@route("/download-files", method="POST")
+@safeguard
+def download_files():
+    """
+    download_files endpoint
+    """
+    url = request.forms.url.strip()
+    return url
 
 
 if __name__ == "__main__":
-    download_files_obj = DownloadFiles()
-    download_files_obj.download_files(
-        bucket_name=BUCKET_NAME, download_path=DOWNLOAD_PATH
-    )
+    bottle.debug(True)
+    run(host="localhost", port=8080, reloader=True)

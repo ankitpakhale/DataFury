@@ -4,3 +4,4 @@ requests
 pylint 
 pytest 
 python-dotenv
+bottle
