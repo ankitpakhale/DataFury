@@ -3,12 +3,22 @@
 Starting point of the project
 """
 
+# standard library imports
+import os
 from typing import Callable, Any
+
+# third-Party library imports
+import bottle
+from bottle import Bottle, request, response, static_file, run
+
+# local application imports
 from utils import cache
 from utils import logger
-import bottle
-from bottle import route, run, request
 from constant import status
+from download_files import DownloadFiles
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def generate_response(
@@ -61,7 +71,13 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
                 message="Response generated successfully",
                 status_code=status.HTTP_200_OK,
             )
-        except (ValueError, TypeError, KeyError) as e:  # specific exceptions to catch
+        # TODO: create EXCEPTION_MAP
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+            Exception,
+        ) as e:  # specific exceptions to catch
             logger.error("Error occured: %s", {str(e)})
             return generate_response(
                 status=False,
@@ -69,40 +85,47 @@ def safeguard(func: Callable[..., Any]) -> Callable[..., dict]:
                 message=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            # log unexpected exceptions
-            logger.error(
-                "Unexpected error in %s: %s", func.__name__, e
-            )  # lazy % formatting
-            return generate_response(
-                status=False,
-                payload={},
-                message="An unexpected error occurred.",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
 
     return wrapper
 
 
-@route("/ping")
+app = Bottle()
+
+
+@app.route("/ping")
 @safeguard
-def health_check():
+def health_check() -> dict:
     """
     health-check endpoint
     """
     return {"result": "PONG"}
 
 
-@route("/download-files", method="POST")
+@app.route("/download", method="POST")
 @safeguard
-def download_files():
+def download_files() -> dict:
     """
     download_files endpoint
     """
-    url = request.forms.url.strip()
-    return url
+    bucket_name: str = request.forms.bucket_name.strip()
+    print("➡ 103 bucket_name:", bucket_name)
+    if bucket_name == "test_default":
+        bucket_name = os.getenv("BUCKET_NAME")
+    __download = DownloadFiles(bucket_name=bucket_name)
+    return __download
+
+
+# @safeguard
+@app.route(
+    "/download-file", methods="GET"
+)  # specifying GET method is not mendatory, just to follow same order it is methods
+def download_file():
+    file_path = request.query.file_path
+    if not file_path or not os.path.exists(file_path):
+        return {"error": "File not found"}, 404
+    return static_file(file_path, root=".", download=True)
 
 
 if __name__ == "__main__":
     bottle.debug(True)
-    run(host="localhost", port=8080, reloader=True)
+    app.run(host="localhost", port=8080, reloader=True)

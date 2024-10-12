@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Download S3 Files</title>
+</head>
+
+<body>
+     <h1>Download S3 Files</h1>
+     <form id="bucketForm">
+          <input type="text" id="bucketName" placeholder="Enter S3 Bucket Name" required>
+          <button type="submit" id="listFilesButton">List Files</button>
+     </form>
+
+     <div id="fileList"></div>
+     <button id="downloadAllButton" style="display:none;">Download Selected Files</button>
+
+     <script>
+          document.getElementById('bucketForm').onsubmit = async function (event) {
+               event.preventDefault(); // Prevent the form from reloading the page
+
+               const bucketName = document.getElementById('bucketName').value;
+
+               try {
+                    const response = await fetch('http://localhost:8080/list-files', {
+                         method: 'POST',
+                         headers: {
+                              'Content-Type': 'application/json'
+                         },
+                         body: JSON.stringify({ bucket_name: bucketName })
+                    });
+
+                    const result = await response.json();
+                    const fileListDiv = document.getElementById('fileList');
+                    fileListDiv.innerHTML = ''; // Clear previous file list
+                    document.getElementById('downloadAllButton').style.display = 'none'; // Hide download button
+
+                    if (response.ok) {
+                         result.files.forEach(file => {
+                              const div = document.createElement('div');
+                              div.innerHTML = `
+                            <input type="checkbox" class="fileCheckbox" value="${file}" id="${file}">
+                            <label for="${file}">${file}</label>
+                            <a href="http://localhost:8080/download-file?file_path=${encodeURIComponent(file)}&bucket_name=${encodeURIComponent(bucketName)}" target="_blank">
+                                <button>Download</button>
+                            </a>
+                        `;
+                              fileListDiv.appendChild(div);
+                         });
+                         document.getElementById('downloadAllButton').style.display = 'block'; // Show download button
+                    } else {
+                         alert(result.error);
+                    }
+               } catch (error) {
+                    console.error('Error:', error);
+                    alert('There was an error processing your request.');
+               }
+          };
+
+          document.getElementById('downloadAllButton').onclick = function () {
+               const selectedFiles = Array.from(document.querySelectorAll('.fileCheckbox:checked')).map(cb => cb.value);
+               const bucketName = document.getElementById('bucketName').value; // Get bucket name
+               selectedFiles.forEach(file => {
+                    window.open(`http://localhost:8080/download-file?file_path=${encodeURIComponent(file)}&bucket_name=${encodeURIComponent(bucketName)}`, '_blank');
+               });
+          };
+     </script>
+</body>
+
+</html>

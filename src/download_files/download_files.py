@@ -4,13 +4,9 @@ This is the starting point of the application
 """
 
 import os
-from dotenv import load_dotenv
 import boto3
 
-load_dotenv()
-
-BUCKET_NAME: str = os.getenv("BUCKET_NAME")
-DOWNLOAD_PATH: str = os.getenv("DOWNLOAD_PATH")
+# from utils import logger
 
 
 class DownloadFiles:  # pylint: disable=too-few-public-methods
@@ -18,39 +14,54 @@ class DownloadFiles:  # pylint: disable=too-few-public-methods
     DownloadFiles Class
     """
 
-    def __init__(self) -> None:
+    def __init__(self, bucket_name: str | None = None) -> None:
         """
         Constructor method
         """
         __session = boto3.Session()
         self.__s3 = __session.client("s3")
+        self.__bucket_name: str = bucket_name
 
-    def download_files(
-        self, bucket_name: str, download_path: str = ".././downloaded_files"
-    ) -> None:
+    # TODO: Add validation layer
+    def download_files(self):
+        """
+        download_files internally call __download_files method
+        """
+        return self.__download_files()
+
+    def __download_files(self):
         """
         This method download files from provided destination
         """
-        bucket_name = bucket_name.strip()
+        # the current working directory
+        __root_path = os.getcwd()
 
-        if not os.path.exists(download_path):
-            os.makedirs(download_path)
+        # defining the path for temp_downloads
+        __temp_downloads_path = os.path.join(__root_path, "temp_downloads")
 
-        response = self.__s3.list_objects_v2(Bucket=bucket_name)
+        # creating the temp_downloads folder if not exist
+        os.makedirs(__temp_downloads_path, exist_ok=True)
 
+        response = self.__s3.list_objects_v2(Bucket=self.__bucket_name)
+        file_list = []
         if "Contents" in response:
             for obj in response["Contents"]:
                 file_key = obj["Key"]
-                file_path = os.path.join(download_path, file_key)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                print(f"Downloading {file_key} to {file_path}")
-                self.__s3.download_file(bucket_name, file_key, file_path)
+                local_file_path = os.path.join(__temp_downloads_path, file_key)
+                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                self.__s3.download_file(self.__bucket_name, file_key, local_file_path)
+                print("➡ local_file_path:", local_file_path)
+                file_list.append(local_file_path)
+                break  # FIXME: remove this
         else:
-            print(f"No files found in bucket {bucket_name}.")
+            print(f"No files found in bucket {self.__bucket_name}.")
+            # logger.warning(f"No files found in bucket {self.__bucket_name}.")
+        return {"files": file_list}
 
 
 if __name__ == "__main__":
-    download_files_obj = DownloadFiles()
-    download_files_obj.download_files(
-        bucket_name=BUCKET_NAME, download_path=DOWNLOAD_PATH
-    )
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    url = os.getenv("BUCKET_NAME")
+    DownloadFiles(bucket_name=url).download_files()
