@@ -1,71 +1,190 @@
-from bottle import Bottle, request, response, static_file, run
-import boto3
+# pylint: disable=pointless-string-statement
+"""
+Starting point of the project
+"""
+
+# standard library imports
 import os
+from typing import Callable, Any
 
-app = Bottle()
-s3 = boto3.client("s3", region_name="ap-south-1")  # Specify the region here
+# third-Party library imports
+import bottle
+from bottle import Bottle, request, response, static_file, run
 
-TEMP_DIR = "temp_downloads"  # Directory to save downloaded files
-os.makedirs(TEMP_DIR, exist_ok=True)  # Create temp directory if it doesn't exist
+# local application imports
+from utils import cache_manager
+from utils import logger
+from download_files import DownloadFiles
+from dotenv import load_dotenv
 
 
-# Function to handle CORS
+# load environment variables
+load_dotenv()
+
+# caching flag
+IS_CACHING_REQUIRED: bool = False
+
+
+def generate_response(
+    status: bool, payload: dict, message: str, status_code: int
+) -> dict:
+    """
+    generate_response returns the response in specific order
+    """
+    response.status = status_code
+    return {
+        "status": status,
+        "payload": payload,
+        "message": message,
+        "status_code": status_code,
+    }
+
+
 def set_cors_headers():
+    """
+    function to handle CORS
+    """
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
 
 
+def safeguard(is_file_download: bool = False):
+    """
+    safeguard decorator handles caching and response logic for both regular and file download responses.
+    :param is_file_download: A flag to specify if it's for a file download.
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapper(*args, **kwargs) -> Any:
+            try:
+                # set cors headers
+                set_cors_headers()
+
+                # determine the key for caching
+                key: str = (
+                    request.query.file_path.strip()
+                    if is_file_download
+                    else request.forms.bucket_name.strip()
+                )
+
+                # caching logic
+                if not IS_CACHING_REQUIRED:
+                    logger.critical("Caching is OFF, turn it ON")
+
+                if IS_CACHING_REQUIRED and cache_manager.has(key):
+                    cached_result = cache_manager.get(key)
+                    return (
+                        cached_result
+                        if is_file_download
+                        else generate_response(
+                            status=True,
+                            payload=cached_result,
+                            message="Cached response",
+                            status_code=200,
+                        )
+                    )
+
+                # execute the wrapped function
+                result = func(*args, **kwargs)
+
+                # cache the result
+                if IS_CACHING_REQUIRED:
+                    cache_manager.set(key, result)
+
+                # handle file downloads differently
+                if is_file_download:
+                    return result
+
+                # generate a standard response
+                return generate_response(
+                    status=True,
+                    payload=result,
+                    message="Response generated successfully",
+                    status_code=200,
+                )
+
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error("Error occurred: %s", str(e))
+                return generate_response(
+                    status=False,
+                    payload={},
+                    message=str(e),
+                    status_code=400,
+                )
+
+            except Exception as e:
+                logger.error("Unexpected error occurred: %s", str(e))
+                return generate_response(
+                    status=False,
+                    payload={},
+                    message=str(e),
+                    status_code=500,
+                )
+
+        return wrapper
+
+    return decorator
+
+
+app = Bottle()
+
+
+@app.route("/ping")
+@safeguard()
+def health_check() -> dict:
+    """
+    health-check endpoint
+    """
+    return {"result": "PONG"}
+
+
 @app.route("/list-files", method=["OPTIONS", "POST"])
-def list_files():
-    set_cors_headers()
+@safeguard()
+def list_files() -> dict:
+    """
+    list_files endpoint
+    """
+    bucket_name: str = request.forms.bucket_name.strip()
 
-    if request.method == "OPTIONS":
-        return {}  # Preflight request, just return 200
+    if bucket_name == "test_default":
+        # set bucket name from environment variable
+        bucket_name = os.getenv("BUCKET_NAME")
 
-    data = request.json
-    bucket_name = data.get("bucket_name")
+    # download files from bucket
+    download_result = DownloadFiles(bucket_name=bucket_name).download_files()
 
-    if not bucket_name:
-        return {"error": "Bucket name is required"}, 400
-
-    try:
-        response = s3.list_objects_v2(Bucket=bucket_name)
-
-        if "Contents" in response:
-            files = [
-                obj["Key"] for obj in response["Contents"][:4]
-            ]  # Get only the first 4 files
-            return {"files": files}
-        else:
-            return {"error": "No files found in the bucket."}, 404
-
-    except Exception as e:
-        return {"error": str(e)}, 500
+    return download_result
 
 
-@app.get("/download-file")
-def download_file():
-    set_cors_headers()
+@app.route("/download-file", methods=["GET"])
+@safeguard(is_file_download=True)
+def download_file() -> Any:
+    """
+    Download_file endpoint for serving file downloads to the client.
+    It validates the requested file path and sends the file if available.
+    """
+    file_path = request.query.file_path.strip()
 
-    file_key = request.query.file_path
-    bucket_name = request.query.bucket_name  # Include bucket name for download
+    # validate if file path is provided and exists
+    if not file_path or not os.path.exists(file_path):
+        return generate_response(
+            status=False,
+            payload={},
+            message="File not found",
+            status_code=404,
+        )
 
-    if not bucket_name or not file_key:
-        return {"error": "File path and bucket name are required"}, 400
+    # set the Content-Disposition header to force download
+    response.headers[
+        "Content-Disposition"
+    ] = f'attachment; filename="{os.path.basename(file_path)}"'
 
-    local_file_path = os.path.join(TEMP_DIR, file_key)
-
-    try:
-        # Download file from S3 to local path if it doesn't exist
-        if not os.path.exists(local_file_path):
-            s3.download_file(bucket_name, file_key, local_file_path)
-
-        return static_file(local_file_path, root=".", download=True)
-
-    except Exception as e:
-        return {"error": str(e)}, 500
+    # serve the file for download
+    return static_file(file_path, root="/", mimetype="application/json", download=True)
 
 
 if __name__ == "__main__":
-    run(app, host="localhost", port=8080, debug=True)
+    status = os.getenv("ENV") != "prod"
+    bottle.debug(status)
+    app.run(host="localhost", port=8080, reloader=status)

@@ -59,13 +59,35 @@
                }
           };
 
-          document.getElementById('downloadAllButton').onclick = function () {
+          document.getElementById('downloadAllButton').onclick = async function () {
                const selectedFiles = Array.from(document.querySelectorAll('.fileCheckbox:checked')).map(cb => cb.value);
                const bucketName = document.getElementById('bucketName').value; // Get bucket name
-               selectedFiles.forEach(file => {
-                    window.open(`http://localhost:8080/download-file?file_path=${encodeURIComponent(file)}&bucket_name=${encodeURIComponent(bucketName)}`, '_blank');
-               });
+
+               for (const file of selectedFiles) {
+                    try {
+                         const response = await fetch(`http://localhost:8080/download-file?file_path=${encodeURIComponent(file)}&bucket_name=${encodeURIComponent(bucketName)}`);
+
+                         if (!response.ok) {
+                              throw new Error(`Failed to download ${file}: ${response.statusText}`);
+                         }
+
+                         const blob = await response.blob(); // Get the binary data of the file
+                         const url = window.URL.createObjectURL(blob); // Create an object URL
+                         const a = document.createElement('a');
+                         a.href = url;
+                         a.download = file.split('/').pop(); // Set the file name
+                         document.body.appendChild(a);
+                         a.click(); // Trigger the download
+                         document.body.removeChild(a);
+                         window.URL.revokeObjectURL(url); // Clean up the object URL
+                    } catch (error) {
+                         console.error('Download error:', error);
+                         alert(`Failed to download ${file}: ${error.message}`);
+                    }
+               }
           };
+
+
      </script>
 </body>
 

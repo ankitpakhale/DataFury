@@ -4,23 +4,61 @@ This is the starting point of the application
 """
 
 import os
+import sys
+import argparse
+from typing import Optional
 import boto3
+import botocore
+from botocore.client import Config
+from utils import logger
 
-# from utils import logger
 
-
-class DownloadFiles:  # pylint: disable=too-few-public-methods
+class DownloadFiles:
     """
     DownloadFiles Class
     """
 
-    def __init__(self, bucket_name: str | None = None) -> None:
+    def __init__(self, bucket_name: Optional[str] = None) -> None:
         """
         Constructor method
         """
-        __session = boto3.Session()
-        self.__s3 = __session.client("s3")
         self.__bucket_name: str = bucket_name
+        __session = boto3.Session()
+        self.__s3 = __session.client(
+            "s3", config=Config(signature_version=botocore.UNSIGNED)
+        )
+        self.__validate_data()
+
+    def __validate_data(self):
+        """
+        Validate provided data and returns True if the data is properly validated else returns False
+        """
+        __is_valid: bool = True
+
+        if not self.__bucket_name:
+            msg = "No bucket name found!"
+            # logger.fatal(msg)
+            raise ValueError(msg)
+
+        return __is_valid
+
+    def parse_arguments(self):
+        """
+        This parses the command line arguments, assigns them to the respective instance variables,
+        validates them and then calls the function associated  with the provided method name.
+        """
+        parser = argparse.ArgumentParser(
+            description="All the operations related to project management using Asana"
+        )
+        parser.add_argument(
+            "-bn", "--bucket_name", type=str, help="AWS S3 bucket name", required=True
+        )
+        args = parser.parse_args()
+        if args.bucket_name:
+            self.__bucket_name = args.bucket_name
+
+        if not self.__validate_data():
+            sys.exit(1)
 
     # TODO: Add validation layer
     def download_files(self):
@@ -50,12 +88,13 @@ class DownloadFiles:  # pylint: disable=too-few-public-methods
                 local_file_path = os.path.join(__temp_downloads_path, file_key)
                 os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
                 self.__s3.download_file(self.__bucket_name, file_key, local_file_path)
-                print("➡ local_file_path:", local_file_path)
                 file_list.append(local_file_path)
-                break  # FIXME: remove this
+            logger.debug(
+                f"{len(file_list)} files downloaded from bucket {self.__bucket_name}."
+            )
         else:
             print(f"No files found in bucket {self.__bucket_name}.")
-            # logger.warning(f"No files found in bucket {self.__bucket_name}.")
+            logger.warning(f"No files found in bucket {self.__bucket_name}.")
         return {"files": file_list}
 
 
@@ -63,5 +102,8 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-    url = os.getenv("BUCKET_NAME")
-    DownloadFiles(bucket_name=url).download_files()
+    __bucket_name = os.getenv("BUCKET_NAME")
+    __download_files = DownloadFiles(bucket_name=__bucket_name)
+    __download_files.parse_arguments()
+    downloaded_files = __download_files.download_files()
+    print("➡ Downloaded Files:", downloaded_files)
